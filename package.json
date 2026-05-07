@@ -1,0 +1,17 @@
+{
+  "name": "trading-dashboard",
+  "version": "1.0.0",
+  "description": "Trading dashboard con Binance WebSocket en tiempo real",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2",
+    "ws": "^8.14.2"
+  }
+}
