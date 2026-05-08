@@ -30,7 +30,21 @@ async function loadHistory(sym) {
         // Usar spot para evitar restricciones de futuros
         const url = `${BYBIT_REST}/kline?category=spot&symbol=${sym}&interval=60&limit=500`;
         console.log(`📡 Cargando: ${url}`);
-        const res  = await fetch(url);
+        
+        // Agregar headers para evitar bloqueos de Cloudflare/WAF en Render
+        const res = await fetch(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json'
+            }
+        });
+
+        // Si la respuesta no es 200 OK, lanzamos error mostrando el texto devuelto (generalmente HTML de bloqueo)
+        if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`HTTP ${res.status} - ${errorText.substring(0, 100)}...`);
+        }
+
         const json = await res.json();
 
         console.log(`📦 Respuesta ${sym}: retCode=${json.retCode}, items=${json.result?.list?.length}`);
