@@ -226,11 +226,17 @@ const TA={
         return e;
     },
     macd(cls){
-        if(cls.length<26)return null;
-        const f=this.ema(cls,12),s=this.ema(cls,26);
-        if(!f||!s)return null;
-        const m=f-s,sig=this.ema([m],9);
-        return{macd:m,signal:sig,histogram:m-sig};
+        if(cls.length<35)return null;
+        const macdLine=[];
+        for(let e=cls.length-8;e<=cls.length;e++){
+            const sl=cls.slice(0,e);
+            const f=this.ema(sl,12),s=this.ema(sl,26);
+            if(f!=null&&s!=null)macdLine.push(f-s);
+        }
+        if(macdLine.length<9)return null;
+        const m=macdLine[macdLine.length-1];
+        const sig=this.ema(macdLine,9);
+        return{macd:m,signal:sig,histogram:sig!=null?m-sig:null};
     },
     atr(cs,n=14){
         if(cs.length<n+1)return null;
@@ -428,7 +434,7 @@ function getRec(candles,price){
     if(buy>sell+15)rec='COMPRA';
     else if(sell>buy+15)rec='VENTA';
 
-    return{rec,confidence:conf,signals:sigs.slice(0,10),ind:{rsi,stoch,macd,adx:adx?.adx,atr,mfi,cci,wr,obv:obv!=null?(obv>0?'↑':'↓'):'—',s50,s200,bb,ps,vwap,cmf}};
+    return{rec,confidence:conf,signals:sigs.slice(0,10),ind:{rsi,stoch,macd,adx:adx?.adx,atr,mfi,cci,wr,obv:obv!=null?(obv>0?'↑':'↓'):'—',s50,s200,e21,bb,ps,vwap,cmf}};
 }
 
 // ─── ESTADO GLOBAL ─────────────────────────────────────────────
@@ -509,7 +515,7 @@ function renderCard(symbol){
       <div class="ii"><div class="ilb">MACD</div><div class="iv ${i.macd?(i.macd.macd>i.macd.signal?'bull':'bear'):'neut'}">${i.macd?f1(i.macd.macd):'—'}</div></div>
       <div class="ii"><div class="ilb">ADX</div><div class="iv ${i.adx!=null?(i.adx>25?'bull':'neut'):'neut'}">${f0(i.adx)}</div></div>
       <div class="ii"><div class="ilb">SAR</div><div class="iv ${i.ps?(i.ps.bull?'bull':'bear'):'neut'}">${i.ps?(i.ps.bull?'↑':'↓'):'—'}</div></div>
-      <div class="ii"><div class="ilb">EMA21</div><div class="iv">${f0(i.s50)}</div></div>
+      <div class="ii"><div class="ilb">EMA21</div><div class="iv">${f0(i.e21)}</div></div>
       <div class="ii"><div class="ilb">Ichimoku</div><div class="iv">✓</div></div>
     </div>
     <div class="ig-title">⚡ Momentum</div>
