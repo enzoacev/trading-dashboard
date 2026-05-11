@@ -10,16 +10,19 @@ const io     = new Server(server, { cors: { origin: '*' } });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-const BYBIT_REST = 'https://api.bybit.com/v5/market';
-const BYBIT_WS   = 'wss://stream.bybit.com/v5/public/spot';
+const KRAKEN_REST = 'https://api.kraken.com/0/public';
+const KRAKEN_WS   = 'wss://ws.kraken.com';
 
 const SYMBOLS = [
-    { id: 'BTCUSDT',  name: 'Bitcoin',  symbol: 'BTC' },
-    { id: 'ETHUSDT',  name: 'Ethereum', symbol: 'ETH' },
-    { id: 'ADAUSDT',  name: 'Cardano',  symbol: 'ADA' },
-    { id: 'SOLUSDT',  name: 'Solana',   symbol: 'SOL' },
-    { id: 'XRPUSDT',  name: 'Ripple',   symbol: 'XRP' },
+    { id: 'BTCUSDT', restPair: 'XBTUSD', wsPair: 'XBT/USD', name: 'Bitcoin',  symbol: 'BTC' },
+    { id: 'ETHUSDT', restPair: 'ETHUSD', wsPair: 'ETH/USD', name: 'Ethereum', symbol: 'ETH' },
+    { id: 'ADAUSDT', restPair: 'ADAUSD', wsPair: 'ADA/USD', name: 'Cardano',  symbol: 'ADA' },
+    { id: 'SOLUSDT', restPair: 'SOLUSD', wsPair: 'SOL/USD', name: 'Solana',   symbol: 'SOL' },
+    { id: 'XRPUSDT', restPair: 'XRPUSD', wsPair: 'XRP/USD', name: 'Ripple',   symbol: 'XRP' },
 ];
+
+const wsPairToId = {};
+SYMBOLS.forEach(s => { wsPairToId[s.wsPair] = s.id; });
 
 const candles = {};
 const prices  = {};
@@ -27,39 +30,33 @@ const prices  = {};
 // ── Cargar historial REST ─────────────────────────────────────
 async function loadHistory(sym) {
     try {
-        // Usar spot para evitar restricciones de futuros
-        const url = `${BYBIT_REST}/kline?category=spot&symbol=${sym}&interval=60&limit=500`;
+        const meta = SYMBOLS.find(s => s.id === sym);
+        const url = `${KRAKEN_REST}/OHLC?pair=${meta.restPair}&interval=60`;
         console.log(`📡 Cargando: ${url}`);
-        
-        // Agregar headers para evitar bloqueos de Cloudflare/WAF en Render
-        const res = await fetch(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json'
-            }
-        });
 
-        // Si la respuesta no es 200 OK, lanzamos error mostrando el texto devuelto (generalmente HTML de bloqueo)
+        const res = await fetch(url);
         if (!res.ok) {
             const errorText = await res.text();
             throw new Error(`HTTP ${res.status} - ${errorText.substring(0, 100)}...`);
         }
 
         const json = await res.json();
+        if (json.error && json.error.length > 0) throw new Error(json.error[0]);
 
-        console.log(`📦 Respuesta ${sym}: retCode=${json.retCode}, items=${json.result?.list?.length}`);
+        // Kraken devuelve el resultado bajo la clave del par (puede variar, ej: XXBTZUSD)
+        const resultKey = Object.keys(json.result).find(k => k !== 'last');
+        const list = json.result[resultKey];
 
-        if (json.retCode !== 0) throw new Error(json.retMsg);
+        console.log(`📦 Respuesta ${sym}: items=${list?.length}`);
 
-        const list = [...json.result.list].reverse();
-
-        candles[sym] = list.map(k => ({
-            t: parseInt(k[0]),
+        // Kraken OHLC: [time, open, high, low, close, vwap, volume, count]
+        candles[sym] = list.slice(-500).map(k => ({
+            t: parseInt(k[0]) * 1000,
             o: parseFloat(k[1]),
             h: parseFloat(k[2]),
             l: parseFloat(k[3]),
             c: parseFloat(k[4]),
-            v: parseFloat(k[5])
+            v: parseFloat(k[6])
         }));
 
         prices[sym] = candles[sym][candles[sym].length - 1].c;
@@ -69,23 +66,27 @@ async function loadHistory(sym) {
     }
 }
 
-// ── WebSocket Bybit spot ──────────────────────────────────────
+// ── WebSocket Kraken ──────────────────────────────────────────
 let pingInterval = null;
 
 function openStream() {
-    const ws = new WebSocket(BYBIT_WS);
+    const ws = new WebSocket(KRAKEN_WS);
 
     ws.on('open', () => {
-        console.log('🔌 WebSocket Bybit spot conectado');
+        console.log('🔌 WebSocket Kraken conectado');
 
-        const args = SYMBOLS.map(s => `kline.60.${s.id}`);
-        const msg  = JSON.stringify({ op: 'subscribe', args });
+        const pairs = SYMBOLS.map(s => s.wsPair);
+        const msg = JSON.stringify({
+            event: 'subscribe',
+            pair: pairs,
+            subscription: { name: 'ohlc', interval: 60 }
+        });
         console.log('📤 Suscribiendo:', msg);
         ws.send(msg);
 
         pingInterval = setInterval(() => {
-            if (ws.readyState === ws.OPEN) {
-                ws.send(JSON.stringify({ op: 'ping' }));
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ event: 'ping' }));
             }
         }, 20000);
     });
@@ -94,44 +95,40 @@ function openStream() {
         try {
             const msg = JSON.parse(raw.toString());
 
-            // Log de cada mensaje para debug
-            if (msg.op) {
-                console.log(`📨 op=${msg.op}`, msg.success !== undefined ? `success=${msg.success}` : '');
+            // Kraken envía eventos como objetos
+            if (msg.event) {
+                console.log(`📨 event=${msg.event}`);
                 return;
             }
 
-            if (!msg.topic || !msg.data) return;
+            // Actualización OHLC: [channelID, [time, etime, open, high, low, close, vwap, volume, count], "ohlc-60", "XBT/USD"]
+            if (!Array.isArray(msg) || msg.length < 4) return;
+            const wsPair = msg[3];
+            const sym    = wsPairToId[wsPair];
+            if (!sym) return;
 
-            const parts = msg.topic.split('.');
-            const sym   = parts[2];
-            const data  = Array.isArray(msg.data) ? msg.data[0] : msg.data;
-
+            const data = msg[1];
             const candle = {
-                t: data.start   !== undefined ? data.start   : Date.now(),
-                o: parseFloat(data.open  || data.o || 0),
-                h: parseFloat(data.high  || data.h || 0),
-                l: parseFloat(data.low   || data.l || 0),
-                c: parseFloat(data.close || data.c || 0),
-                v: parseFloat(data.volume|| data.v || 0)
+                t: parseFloat(data[0]) * 1000,
+                o: parseFloat(data[2]),
+                h: parseFloat(data[3]),
+                l: parseFloat(data[4]),
+                c: parseFloat(data[5]),
+                v: parseFloat(data[7])
             };
 
             if (!candle.c) return;
 
-            const closed = data.confirm === true;
-            prices[sym]  = candle.c;
-
+            prices[sym] = candle.c;
             if (!candles[sym]) candles[sym] = [];
 
-            if (closed) {
+            const last = candles[sym][candles[sym].length - 1];
+            if (last && last.t === candle.t) {
+                candles[sym][candles[sym].length - 1] = candle;
+            } else {
                 candles[sym].push(candle);
                 if (candles[sym].length > 500) candles[sym].shift();
-                console.log(`🕯 Vela cerrada ${sym}: $${candle.c}`);
-            } else {
-                if (candles[sym].length > 0) {
-                    candles[sym][candles[sym].length - 1] = candle;
-                } else {
-                    candles[sym].push(candle);
-                }
+                console.log(`🕯 Nueva vela ${sym}: $${candle.c}`);
             }
 
             const meta = SYMBOLS.find(s => s.id === sym);
@@ -142,7 +139,7 @@ function openStream() {
                 name:    meta.name,
                 sym:     meta.symbol,
                 price:   candle.c,
-                closed,
+                closed:  false,
                 candles: candles[sym].slice(-200)
             });
 
@@ -166,7 +163,6 @@ function openStream() {
 io.on('connection', (socket) => {
     console.log(`👤 Cliente conectado: ${socket.id}`);
 
-    // Enviar datos actuales al cliente nuevo
     let sent = 0;
     SYMBOLS.forEach(meta => {
         const sym = meta.id;
@@ -196,7 +192,7 @@ io.on('connection', (socket) => {
 // ── Status API ────────────────────────────────────────────────
 app.get('/api/status', (req, res) => {
     res.json({
-        source: 'Bybit Spot',
+        source: 'Kraken',
         uptime: process.uptime(),
         symbols: SYMBOLS.map(s => ({
             id:      s.id,
@@ -214,7 +210,7 @@ async function start() {
 
     for (const s of SYMBOLS) {
         await loadHistory(s.id);
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 300));
     }
 
     const loaded = SYMBOLS.filter(s => candles[s.id]?.length > 0).length;
