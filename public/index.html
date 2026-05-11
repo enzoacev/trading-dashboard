@@ -775,7 +775,7 @@ function renderCard(symbol){
         ?`<button class="cbtn sell" onclick="openModal('${symbol}','VENTA')">🚨 Vender ahora</button>
            <button class="cbtn" onclick="saveTrade('${name}','VENTA',${price},${r.confidence})">✓ Ya vendí</button>`
         :`<button class="cbtn" onclick="openModal('${symbol}','ESPERAR')">📊 Ver gráfico</button>
-           <button class="cbtn" disabled>Sin señal clara</button>`;
+           <button class="cbtn" onclick="saveTrade('${name}','COMPRA',${price},${r.confidence})">📌 Registrar compra</button>`;
 
     card.innerHTML=`
     <div class="card-head">
