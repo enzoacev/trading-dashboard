@@ -1,7 +1,7 @@
 {
   "name": "trading-dashboard",
   "version": "1.0.0",
-  "description": "Trading dashboard con Binance WebSocket en tiempo real",
+  "description": "Trading dashboard con Bybit WebSocket en tiempo real",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
