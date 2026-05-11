@@ -147,13 +147,13 @@
 
 <div class="wrap">
   <div class="hd">
-    <h1>📊 Trading Dashboard — Bybit WebSocket en Tiempo Real</h1>
+    <h1>📊 Trading Dashboard — Kraken WebSocket en Tiempo Real</h1>
     <p>23 indicadores sobre velas OHLCV reales · Sin restricciones geográficas</p>
   </div>
 
   <div class="sb">
     <div class="dot yellow" id="connDot"></div>
-    <span style="color:#333;font-weight:600;" id="connText">Conectando a Bybit…</span>
+    <span style="color:#333;font-weight:600;" id="connText">Conectando a Kraken…</span>
     <span style="color:#aaa;font-size:12px;">Último tick: <strong id="lastTick">—</strong></span>
     <div class="ur">
       <button class="ctrl" id="unBtn" onclick="undo()" disabled>↶ Deshacer</button>
@@ -169,7 +169,7 @@
   <div id="t-rec" class="tab on">
     <div id="loading" class="loading">
       <div class="spinner"></div>
-      <p style="font-weight:600;font-size:16px;">Conectando a Bybit WebSocket…</p>
+      <p style="font-weight:600;font-size:16px;">Conectando a Kraken WebSocket…</p>
       <p style="font-size:13px;margin-top:8px;opacity:.8;">Cargando 500 velas OHLCV por símbolo</p>
     </div>
     <div id="grid" class="grid" style="display:none;"></div>
@@ -446,7 +446,7 @@ const socket=io();
 
 socket.on('connect',()=>{
     document.getElementById('connDot').className='dot yellow';
-    document.getElementById('connText').textContent='Conectado · Esperando velas de Bybit…';
+    document.getElementById('connText').textContent='Conectado · Esperando velas de Kraken…';
 });
 
 socket.on('disconnect',()=>{
@@ -465,7 +465,7 @@ socket.on('update',(data)=>{
         document.getElementById('loading').style.display='none';
         document.getElementById('grid').style.display='grid';
         document.getElementById('connDot').className='dot green';
-        document.getElementById('connText').textContent=`En vivo · Bybit WebSocket`;
+        document.getElementById('connText').textContent=`En vivo · Kraken WebSocket`;
     }
 
     document.getElementById('lastTick').textContent=new Date().toLocaleTimeString('es-AR');
