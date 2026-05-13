@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check server.js)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const html=fs.readFileSync\\('public/index.html','utf8'\\);const scripts=\\(html.match\\(/<script/g\\)||[]\\).length;const closes=\\(html.match\\(/<\\\\/script>/g\\)||[]\\).length;console.log\\('script tags:',scripts,'closes:',closes,'tabs in JS:',html.includes\\('t-bot'\\),'bot toggle:',html.includes\\('toggleBot'\\),'bot API:',html.includes\\('/api/bot'\\)\\)\")"
+    ]
+  }
+}
